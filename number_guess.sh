@@ -2,61 +2,48 @@
 
 PSQL="psql --username=freecodecamp --dbname=number_guess -t --no-align -c"
 
-CURRENT_USER=""
+echo -e "\nEnter your username:"
+read INPUT
 
-USER_MENU(){
-  if [[ -n $1 ]]; then
-    echo "$1"
-  fi
-  echo -e "\nEnter your username:"
-  read INPUT
-  CURRENT_USER=$INPUT
-  if [[ ${#INPUT} -le 22 ]]; then
-    USER_EXISTS=$($PSQL "SELECT * FROM users WHERE username='$INPUT';")
-    if [[ -z $USER_EXISTS ]]; then
-        INSERT_RESULT=$($PSQL "INSERT INTO users VALUES('$INPUT');")
-        if [[ $? -ne 0 ]]; then
-          USER_MENU "Failed to create a user with username $INPUT"
-        else
-          echo "Welcome, $INPUT! It looks like this is your first time here."
-          USERNAME="$INPUT"
-        fi
-    else
-      USER_INFO=$($PSQL "SELECT username, COUNT(*), MIN(guesses) FROM users INNER JOIN games USING(username) WHERE username='$INPUT' GROUP BY username;")
-      echo "$USER_INFO" | while IFS='|' read -r USERNAME GAMES_PLAYED BEST_SCORE
-        do
-          echo "Welcome back, $USERNAME! You have played $GAMES_PLAYED games, and your best game took $BEST_SCORE guesses"
-        done
-    fi
-  else
-      USER_MENU "Please enter a valid username."
-  fi
-}
+USERNAME=$INPUT
+USER_EXISTS=$($PSQL "SELECT * FROM users WHERE username='$INPUT';")
+if [[ -z $USER_EXISTS ]]; then
+  INSERT_RESULT=$($PSQL "INSERT INTO users VALUES('$INPUT');")
+  echo "Welcome, $INPUT! It looks like this is your first time here."
+  USERNAME=$INPUT
+else
+  GAMES_PLAYED=$($PSQL "SELECT COUNT(*) FROM games LEFT JOIN users USING(username) WHERE username='$INPUT';")
+  BEST_SCORE=$($PSQL "SELECT MIN(guesses) FROM games LEFT JOIN users USING(username) WHERE username='$INPUT';")
+  echo "Welcome back, $USERNAME! You have played $GAMES_PLAYED games, and your best game took $BEST_SCORE guesses."
+fi
 
-GOAL=$(( RANDOM % 1000 + 1))
-TRIES=1
+GOAL=$(( RANDOM % 1000 + 1 ))
+TRIES=0
 
-GUESS_MENU(){
-  if [[ -n $1 ]]; then
-    echo "$1"
-  fi
+echo "Guess the secret number between 1 and 1000:"
+read GUESS
 
-  echo "Guess the secret number between 1 and 1000:"
-  read GUESS
+until [[ $GUESS == $GOAL ]]
+do
   if [[ ! $GUESS =~ ^[0-9]+$ ]]; then
-    GUESS_MENU "That is not an integer, guess again:"
-  else
+    echo -e "\nThat is not an integer, guess again:"
+    read GUESS
     ((TRIES++))
-    if (( GUESS == GOAL)); then
-      echo "You guessed it in $TRIES tries. The secret number was $GOAL. Nice job!"
-      GAME_RECORDED=$($PSQL "INSERT INTO games(username, guesses) VALUES('$CURRENT_USER', $TRIES);")
-    elif (( GUESS < GOAL )); then
-      GUESS_MENU "It's higher than that, guess again:"
+  else
+    if [[ $GUESS < $GOAL ]]; then
+      echo "It's higher than that, guess again:"
+      read GUESS
+      ((TRIES++))
     else
-      GUESS_MENU "It's lower than that, guess again:"
+      echo "It's lower than that, guess again:"
+      read GUESS
+      ((TRIES++))
     fi
   fi
-}
+done
 
-USER_MENU
-GUESS_MENU
+((TRIES++))
+
+GAME_RECORDED=$($PSQL "INSERT INTO games(username, guesses) VALUES('$USERNAME', $TRIES);")
+    
+echo "You guessed it in $TRIES tries. The secret number was $GOAL. Nice job!"
